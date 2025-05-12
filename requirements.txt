@@ -1,0 +1,7 @@
+streamlit
+groq
+SpeechRecognition
+audio-recorder-streamlit
+python-dotenv
+tempfile
+datetime
