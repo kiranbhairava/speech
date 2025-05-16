@@ -8,6 +8,33 @@ import speech_recognition as sr
 from audio_recorder_streamlit import audio_recorder
 import requests  # Using requests instead of Groq client for more control
 
+def transcribe_audio(audio_bytes):
+    """Transcribe audio bytes to text using Google Speech Recognition"""
+    try:
+        # Create a temporary WAV file
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as temp_audio:
+            temp_audio.write(audio_bytes)
+            temp_audio.flush()
+
+            # Initialize recognizer
+            recognizer = sr.Recognizer()
+            
+            # Load audio file
+            with sr.AudioFile(temp_audio.name) as source:
+                # Record the audio file
+                audio = recognizer.record(source)
+                
+                # Attempt to recognize speech using Google Speech Recognition
+                text = recognizer.recognize_google(audio)
+                return {"success": True, "text": text}
+
+    except sr.UnknownValueError:
+        return {"success": False, "error": "Could not understand the audio"}
+    except sr.RequestError as e:
+        return {"success": False, "error": f"Could not request results; {str(e)}"}
+    except Exception as e:
+        return {"success": False, "error": f"Error processing audio: {str(e)}"}
+
 # Set page configuration
 st.set_page_config(
     page_title="English Speaking Evaluation",
