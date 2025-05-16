@@ -81,7 +81,7 @@ if 'current_test' not in st.session_state:
 
 # Hard-code the API key and model settings
 # Replace "YOUR_API_KEY_HERE" with your actual Groq API key
-GROQ_API_KEY = "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"  
+GROQ_API_KEY = "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"  
 MODEL_OPTION = "llama3-8b-8192"
 TEMPERATURE = 0.5
 
