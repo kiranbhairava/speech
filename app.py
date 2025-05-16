@@ -81,7 +81,7 @@ if 'current_test' not in st.session_state:
 
 # Add a hardcoded API key for testing purposes
 # In production, use a more secure method
-GROQ_API_KEY = "YOUR_API_KEY_HERE"  # Replace with your actual API key
+GROQ_API_KEY = "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"  # Replace with your actual API key
 MODEL_OPTION = "llama3-8b-8192"
 TEMPERATURE = 0.5
 
@@ -117,11 +117,15 @@ with st.sidebar:
 
 def evaluate_with_groq(text, evaluation_type="speaking", reference_text=None):
     """Get evaluation from Groq API using direct HTTP requests"""
+    # Check if API key is properly configured
     if not GROQ_API_KEY or GROQ_API_KEY == "YOUR_API_KEY_HERE":
         return {"success": False, "error": "Groq API key is not configured properly"}
         
     try:
-        # Determine which system prompt to use based on evaluation type
+        # Set the system prompt based on evaluation type
+        system_prompt = ""
+        
+        # For speaking evaluation
         if evaluation_type == "speaking":
             system_prompt = """You are an English language expert. Evaluate the user's speech for:
             1. Pronunciation/clarity
@@ -142,7 +146,8 @@ def evaluate_with_groq(text, evaluation_type="speaking", reference_text=None):
                 "improvement_tips": ["Tip 1", "Tip 2", "Tip 3"]
             }
             """
-        elif evaluation_type == "reading":  # Fixed condition
+        # For reading evaluation
+        elif evaluation_type == "reading":
             system_prompt = f"""You are an English language expert. Evaluate the user's reading accuracy and fluency.
             
             Original text: "{reference_text}"
@@ -165,6 +170,7 @@ def evaluate_with_groq(text, evaluation_type="speaking", reference_text=None):
                 "improvement_tips": ["Tip 1", "Tip 2", "Tip 3"]
             }}
             """
+        # Unknown evaluation type
         else:
             return {"success": False, "error": f"Unknown evaluation type: {evaluation_type}"}
 
@@ -203,6 +209,7 @@ def evaluate_with_groq(text, evaluation_type="speaking", reference_text=None):
     
     except Exception as e:
         return {"success": False, "error": f"Error processing request: {str(e)}"}
+
 
         else:  # reading evaluation
             system_prompt = f"""You are an English language expert. Evaluate the user's reading accuracy and fluency.
