@@ -4,9 +4,9 @@ import time
 import json
 import tempfile
 from datetime import datetime
-from groq import Groq
 import speech_recognition as sr
 from audio_recorder_streamlit import audio_recorder
+import requests  # Using requests instead of Groq client for more control
 
 # Set page configuration
 st.set_page_config(
@@ -79,15 +79,22 @@ if 'history' not in st.session_state:
 if 'current_test' not in st.session_state:
     st.session_state.current_test = None
 
-# Add a config.py file option with instructions
-try:
-    import config
-    GROQ_API_KEY = getattr(config, "GROQ_API_KEY", os.environ.get("GROQ_API_KEY", ""))
-except ImportError:
-    # If config.py doesn't exist, just use environment variable
-    GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+# Add a hardcoded API key for testing purposes
+# In production, use a more secure method
+GROQ_API_KEY = "YOUR_API_KEY_HERE"  # Replace with your actual API key
 MODEL_OPTION = "llama3-8b-8192"
 TEMPERATURE = 0.5
+
+# Check if we have a config file with API key
+try:
+    import config
+    if hasattr(config, "GROQ_API_KEY") and config.GROQ_API_KEY:
+        GROQ_API_KEY = config.GROQ_API_KEY
+except ImportError:
+    # No config file, try environment variable
+    env_key = os.environ.get("GROQ_API_KEY")
+    if env_key:
+        GROQ_API_KEY = env_key
 
 # Sidebar for minimal settings
 with st.sidebar:
@@ -106,49 +113,15 @@ with st.sidebar:
     else:
         st.info("No test history yet")
 
-# Initialize Groq client with hardcoded API key
-@st.cache_resource
-def get_groq_client():
-    return Groq(api_key=GROQ_API_KEY)
-
-client = get_groq_client()
-
-def transcribe_audio(audio_bytes):
-    """Convert speech to text using SpeechRecognition"""
-    # Create a temporary file for the audio
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_audio:
-        temp_audio.write(audio_bytes)
-        temp_audio_path = temp_audio.name
-    
-    # Transcribe the audio
-    recognizer = sr.Recognizer()
-    try:
-        with sr.AudioFile(temp_audio_path) as source:
-            audio_data = recognizer.record(source)
-            try:
-                text = recognizer.recognize_google(audio_data)
-                result = {"success": True, "text": text}
-            except sr.UnknownValueError:
-                result = {"success": False, "error": "Could not understand audio"}
-            except sr.RequestError:
-                result = {"success": False, "error": "Speech recognition API unavailable"}
-    except Exception as e:
-        result = {"success": False, "error": f"Error processing audio: {str(e)}"}
-    
-    # Clean up the temporary file
-    try:
-        os.unlink(temp_audio_path)
-    except:
-        pass
-        
-    return result
+# Removed the Groq client initialization with direct API calls below
 
 def evaluate_with_groq(text, evaluation_type="speaking", reference_text=None):
-    """Get evaluation from Groq API"""
-    if not GROQ_API_KEY:
-        return {"success": False, "error": "Groq API key is not configured"}
+    """Get evaluation from Groq API using direct HTTP requests"""
+    if not GROQ_API_KEY or GROQ_API_KEY == "YOUR_API_KEY_HERE":
+        return {"success": False, "error": "Groq API key is not configured properly"}
         
     try:
+        # Determine which system prompt to use based on evaluation type
         if evaluation_type == "speaking":
             system_prompt = """You are an English language expert. Evaluate the user's speech for:
             1. Pronunciation/clarity
@@ -169,6 +142,66 @@ def evaluate_with_groq(text, evaluation_type="speaking", reference_text=None):
                 "improvement_tips": ["Tip 1", "Tip 2", "Tip 3"]
             }
             """
+        else:  # reading evaluation
+            system_prompt = f"""You are an English language expert. Evaluate the user's reading accuracy and fluency.
+            
+            Original text: "{reference_text}"
+            
+            User's reading: "{text}"
+            
+            Compare the original text with the user's reading and evaluate:
+            1. Reading accuracy (how well they read the exact words)
+            2. Pronunciation
+            3. Fluency/pace
+            4. Overall performance
+            
+            Format your response as JSON with the following structure:
+            {{
+                "score": 7,
+                "accuracy": "Feedback on reading accuracy...",
+                "pronunciation": "Feedback on pronunciation...",
+                "fluency": "Feedback on fluency...",
+                "overall": "Overall feedback...",
+                "improvement_tips": ["Tip 1", "Tip 2", "Tip 3"]
+            }}
+            """
+
+        # Prepare the request payload
+        payload = {
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": text}
+            ],
+            "model": MODEL_OPTION,
+            "temperature": TEMPERATURE,
+            "response_format": {"type": "json_object"}
+        }
+
+        # Make the API request
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        response = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            json=payload,
+            headers=headers
+        )
+        
+        # Check if the request was successful
+        if response.status_code == 200:
+            response_json = response.json()
+            result = json.loads(response_json["choices"][0]["message"]["content"])
+            return {"success": True, "evaluation": result}
+        else:
+            # Return the specific error from the API
+            error_detail = response.json() if response.content else {"error": f"HTTP {response.status_code}"}
+            return {"success": False, "error": f"Error from Groq API: {error_detail}"}
+    
+    except Exception as e:
+        return {"success": False, "error": f"Error processing request: {str(e)}"}
+
         else:  # reading evaluation
             system_prompt = f"""You are an English language expert. Evaluate the user's reading accuracy and fluency.
             
@@ -441,23 +474,47 @@ def main():
     """, unsafe_allow_html=True)
     
     # Check if API key is configured
-    if not GROQ_API_KEY:
-        st.error("⚠️ No Groq API key found! The application requires a valid Groq API key to function.")
+    if not GROQ_API_KEY or GROQ_API_KEY == "YOUR_API_KEY_HERE":
+        st.error("⚠️ API key not configured correctly!")
         st.info("""
         ### How to set up the API key:
         
-        For app administrators:
-        1. Get a Groq API key from [https://console.groq.com/](https://console.groq.com/)
-        2. Set it as an environment variable named `GROQ_API_KEY` before running the app
+        For app administrators, please do ONE of the following:
+           
+        **Option 1:** Edit this file directly and replace `YOUR_API_KEY_HERE` with your actual Groq API key.
         
-        Example:
+        **Option 2:** Create a `config.py` file in the same directory with:
+        ```python
+        GROQ_API_KEY = "your_api_key_here"
+        ```
+           
+        **Option 3:** Set it as an environment variable:
         ```
         export GROQ_API_KEY=your_api_key_here
         streamlit run app.py
         ```
+        
+        If you don't have a Groq API key, you can get one at [https://console.groq.com/](https://console.groq.com/)
         """)
         st.stop()
     
+    # Test the API connection before proceeding
+    test_connection = evaluate_with_groq("Hello, this is a test.", "speaking")
+    if not test_connection["success"]:
+        st.error(f"⚠️ API connection failed: {test_connection['error']}")
+        st.info("""
+        ### API Connection Failed
+        
+        This could be due to:
+        1. Invalid API key
+        2. Network connectivity issues
+        3. API rate limiting
+        
+        Please verify your API key and try again.
+        """)
+        st.stop()
+    
+    # Continue with normal app flow if API connection is successful
     # Tabs for different tests
     tab1, tab2 = st.tabs(["Speaking Test", "Reading Test"])
     
