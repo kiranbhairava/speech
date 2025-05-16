@@ -1,17 +1,20 @@
 
 ####################################################
-import streamlit as st
-import os
-import time
-import json
-import tempfile
-from datetime import datetime
-from groq import Groq
-import speech_recognition as sr
-from audio_recorder_streamlit import audio_recorder
+import streamlit as st # Streamlit is used to build interactive web apps in Python. st is the commonly used alias.
+import os # Lets you interact with the operating system, like accessing environment variables or file paths.
+import time # To manage delays, measure performance duration, or create wait periods.
+import json # To handle JSON data, such as reading/writing configuration files, saving results, or parsing API responses.
+import tempfile #Used to create temporary files (e.g., saving audio files from mic or upload).
+from datetime import datetime # To work with dates and times — useful for timestamping test attempts or logging activity.
+from groq import Groq # To interact with the Groq AI API, which can run large language models like LLaMA3 at high speed
+import speech_recognition as sr # To transcribe audio into text using various speech recognition engines (e.g., Google, Sphinx).
+from audio_recorder_streamlit import audio_recorder # Imports the audio_recorder function from the audio_recorder_streamlit package. 
+
+
+
 
 # Set page configuration
-st.set_page_config(
+st.set_page_config(# Sets the title shown in the browser tab and centers the layout for a clean look.
     page_title="English Speaking Evaluation",
     page_icon="🎤",
     layout="wide",
@@ -74,44 +77,61 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+
 # Initialize session state
 if 'history' not in st.session_state:
-    st.session_state.history = []
-if 'current_test' not in st.session_state:
-    st.session_state.current_test = None
-if 'api_key' not in st.session_state:
-    st.session_state.api_key = os.environ.get("GROQ_API_KEY", "")
+    st.session_state.history = [] # initializes an empty list to store the user’s previous test attempts or 
+                                # interactions (e.g., timestamps, transcripts, scores).
+
+if 'current_test' not in st.session_state: # Checks if the session has a current_test already initialized.
+    st.session_state.current_test = None # Initializes current_test as None, to later store the test metadata (like question set, difficulty, etc.).
+
+if 'api_key' not in st.session_state: # Checks if an API key for the Groq API is already stored in the session state.
+    st.session_state.api_key = os.environ.get("GROQ_API_KEY", "") # tries to fetch the key from the system environment variable GROQ_API_KEY,
+                                                                  # and sets it in session state.
 
 # Sidebar for configuration
-with st.sidebar:
-    st.image("https://via.placeholder.com/150x150.png?text=E-Speak", width=150)
+with st.sidebar: # anything inside this block appears on the left-hand sidebar of the app.
+    st.image("https://via.placeholder.com/150x150.png?text=E-Speak", width=150) # Displays a placeholder image (logo for your app — "E-Speak") and the title "Settings".
     st.title("Settings")
     
     # API configuration
-    api_key_input = st.text_input("Groq API Key", value=st.session_state.api_key, type="password")
-    if api_key_input != st.session_state.api_key:
+    api_key_input = st.text_input("Groq API Key", value=st.session_state.api_key, type="password") # Adds a password-protected input box for the user to paste their Groq API key.
+    if api_key_input != st.session_state.api_key: # If the entered key is different from the one already stored in session_state, it updates the stored key.
         st.session_state.api_key = api_key_input
     
     st.markdown("---")
     
     # Model selection
-    model_option = st.selectbox(
+    model_option = st.selectbox( # Adds a dropdown menu (selectbox) to choose one of several large language models (LLMs).
         "LLM Model",
         ["llama3-8b-8192", "llama3-70b-8192", "mixtral-8x7b-32768"],
-        index=0
+        index = 0
     )
+        # Default selection is the first model: "llama3-8b-8192".
+        # #These options refer to different Groq-supported models:
+        # #LLaMA3 8B – Lightweight, fast.
+        #LLaMA3 70B – Larger, more accurate.
+        # #Mixtral – Mixture-of-experts model, capable of advanced reasoning.
+        
     
     temperature = st.slider("Temperature", min_value=0.0, max_value=1.0, value=0.5, step=0.1)
+    #Adds a slider to control temperature, a parameter that affects the creativity of AI-generated responses:
+    # 0.0 = deterministic (always same output)
+    # 1.0 = highly creative/random
+    # Useful for controlling how strict or freeform the AI’s responses are during evaluations.
     
-    st.markdown("---")
+    st.markdown("---") # Just adds a horizontal rule to separate sections in the sidebar for cleaner visuals.
     
     # History section
-    st.subheader("Test History")
+    # This block displays a summary of past test attempts by the user inside the sidebar or main layout (depending on where it's placed).
+    
+    st.subheader("Test History") # Displays a subheader titled "Test History" 
     if st.session_state.history:
         for i, entry in enumerate(st.session_state.history):
-            with st.expander(f"{entry['type']} - {entry['date']}"):
-                st.write(f"**Score:** {entry['score']}/10")
-                st.write(f"**Transcript:** {entry['transcript'][:100]}...")
+            with st.expander(f"{entry['type']} - {entry['date']}"): # Allows user to collapse/expand each test result
+                st.write(f"**Score:** {entry['score']}/10") # Shows test performance 
+                st.write(f"**Transcript:** {entry['transcript'][:100]}...") # shows transcript preview
     else:
         st.info("No test history yet")
 
@@ -373,9 +393,9 @@ def reading_test():
     st.markdown("</div>", unsafe_allow_html=True)
     
     reading_text = """The rapid advancement of artificial intelligence has brought significant changes 
-    to various industries. While some fear job displacement, others believe AI will create new 
-    opportunities and enhance human capabilities. Researchers continue to debate the long-term 
-    implications of these technologies on society, economy, and human cognition."""
+            to various industries. While some fear job displacement, others believe AI will create new 
+            opportunities and enhance human capabilities. Researchers continue to debate the long-term 
+            implications of these technologies on society, economy, and human cognition."""
     
     st.markdown('<div class="instruction-box">', unsafe_allow_html=True)
     st.write("**Instructions:** Read the following text aloud clearly and at a natural pace.")
@@ -451,7 +471,8 @@ def main():
     </div>
     """, unsafe_allow_html=True)
     
-    # Check if API key is configured
+
+        # Check if API key is configured
     if not st.session_state.api_key:
         st.warning("⚠️ Please enter your Groq API key in the sidebar to use this application.")
         st.info("If you don't have a Groq API key, you can get one at https://console.groq.com/")
@@ -473,6 +494,11 @@ def main():
         <p>© 2025 English Speaking Evaluation</p>
     </div>
     """, unsafe_allow_html=True)
+
+    # https://github.com/darigain/fluency
+    # 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
+    # https://www.fluencyflow.ai/
+
 
 if __name__ == "__main__":
     main()
