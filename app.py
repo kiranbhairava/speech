@@ -142,7 +142,7 @@ def evaluate_with_groq(text, evaluation_type="speaking", reference_text=None):
                 "improvement_tips": ["Tip 1", "Tip 2", "Tip 3"]
             }
             """
-        else:  # reading evaluation
+        elif evaluation_type == "reading":  # Fixed condition
             system_prompt = f"""You are an English language expert. Evaluate the user's reading accuracy and fluency.
             
             Original text: "{reference_text}"
@@ -165,6 +165,8 @@ def evaluate_with_groq(text, evaluation_type="speaking", reference_text=None):
                 "improvement_tips": ["Tip 1", "Tip 2", "Tip 3"]
             }}
             """
+        else:
+            return {"success": False, "error": f"Unknown evaluation type: {evaluation_type}"}
 
         # Prepare the request payload
         payload = {
@@ -202,7 +204,7 @@ def evaluate_with_groq(text, evaluation_type="speaking", reference_text=None):
     except Exception as e:
         return {"success": False, "error": f"Error processing request: {str(e)}"}
 
-        else:
+        else:  # reading evaluation
             system_prompt = f"""You are an English language expert. Evaluate the user's reading accuracy and fluency.
             
             Original text: "{reference_text}"
