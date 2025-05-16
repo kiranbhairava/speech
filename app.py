@@ -79,9 +79,13 @@ if 'history' not in st.session_state:
 if 'current_test' not in st.session_state:
     st.session_state.current_test = None
 
-# Hard-code the API key and model settings
-# Replace "YOUR_API_KEY_HERE" with your actual Groq API key
-GROQ_API_KEY = "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"  
+# Add a config.py file option with instructions
+try:
+    import config
+    GROQ_API_KEY = getattr(config, "GROQ_API_KEY", os.environ.get("GROQ_API_KEY", ""))
+except ImportError:
+    # If config.py doesn't exist, just use environment variable
+    GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 MODEL_OPTION = "llama3-8b-8192"
 TEMPERATURE = 0.5
 
@@ -141,6 +145,9 @@ def transcribe_audio(audio_bytes):
 
 def evaluate_with_groq(text, evaluation_type="speaking", reference_text=None):
     """Get evaluation from Groq API"""
+    if not GROQ_API_KEY:
+        return {"success": False, "error": "Groq API key is not configured"}
+        
     try:
         if evaluation_type == "speaking":
             system_prompt = """You are an English language expert. Evaluate the user's speech for:
@@ -432,6 +439,24 @@ def main():
         <p>Improve your English speaking skills with AI-powered feedback</p>
     </div>
     """, unsafe_allow_html=True)
+    
+    # Check if API key is configured
+    if not GROQ_API_KEY:
+        st.error("⚠️ No Groq API key found! The application requires a valid Groq API key to function.")
+        st.info("""
+        ### How to set up the API key:
+        
+        For app administrators:
+        1. Get a Groq API key from [https://console.groq.com/](https://console.groq.com/)
+        2. Set it as an environment variable named `GROQ_API_KEY` before running the app
+        
+        Example:
+        ```
+        export GROQ_API_KEY=your_api_key_here
+        streamlit run app.py
+        ```
+        """)
+        st.stop()
     
     # Tabs for different tests
     tab1, tab2 = st.tabs(["Speaking Test", "Reading Test"])
