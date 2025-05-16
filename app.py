@@ -202,7 +202,7 @@ def evaluate_with_groq(text, evaluation_type="speaking", reference_text=None):
     except Exception as e:
         return {"success": False, "error": f"Error processing request: {str(e)}"}
 
-        else:  # reading evaluation
+        else:
             system_prompt = f"""You are an English language expert. Evaluate the user's reading accuracy and fluency.
             
             Original text: "{reference_text}"
