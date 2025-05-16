@@ -210,47 +210,6 @@ def evaluate_with_groq(text, evaluation_type="speaking", reference_text=None):
     except Exception as e:
         return {"success": False, "error": f"Error processing request: {str(e)}"}
 
-
-        else:  # reading evaluation
-            system_prompt = f"""You are an English language expert. Evaluate the user's reading accuracy and fluency.
-            
-            Original text: "{reference_text}"
-            
-            User's reading: "{text}"
-            
-            Compare the original text with the user's reading and evaluate:
-            1. Reading accuracy (how well they read the exact words)
-            2. Pronunciation
-            3. Fluency/pace
-            4. Overall performance
-            
-            Format your response as JSON with the following structure:
-            {{
-                "score": 7,
-                "accuracy": "Feedback on reading accuracy...",
-                "pronunciation": "Feedback on pronunciation...",
-                "fluency": "Feedback on fluency...",
-                "overall": "Overall feedback...",
-                "improvement_tips": ["Tip 1", "Tip 2", "Tip 3"]
-            }}
-            """
-
-        response = client.chat.completions.create(
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": text}
-            ],
-            model=MODEL_OPTION,
-            temperature=TEMPERATURE,
-            response_format={"type": "json_object"}
-        )
-        
-        result = json.loads(response.choices[0].message.content)
-        return {"success": True, "evaluation": result}
-    
-    except Exception as e:
-        return {"success": False, "error": f"Error from Groq API: {str(e)}"}
-
 def display_evaluation_results(evaluation_results, transcript):
     """Display evaluation results in a visually appealing way"""
     if not evaluation_results["success"]:
