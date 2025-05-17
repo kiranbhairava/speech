@@ -6,35 +6,59 @@ import tempfile
 from datetime import datetime
 import speech_recognition as sr
 from audio_recorder_streamlit import audio_recorder
-import requests  # Using requests instead of Groq client for more control
+import requests
+from dotenv import load_dotenv
+
+# Load environment variables from .env file if present
+load_dotenv()
 
 def transcribe_audio(audio_bytes):
-    """Transcribe audio bytes to text using Google Speech Recognition"""
+    """Transcribe audio bytes to text using a custom temp file approach"""
     try:
-        # Create a temporary WAV file
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as temp_audio:
-            temp_audio.write(audio_bytes)
-            temp_audio.flush()
-
+        # Create a unique filename in the current directory
+        temp_dir = os.path.join(os.getcwd(), "temp")
+        if not os.path.exists(temp_dir):
+            os.makedirs(temp_dir)
+        
+        # Create a unique filename based on timestamp
+        timestamp = int(time.time() * 1000)
+        filename = f"recording_{timestamp}.wav"
+        filepath = os.path.join(temp_dir, filename)
+        
+        try:
+            # Write audio bytes to file
+            with open(filepath, 'wb') as f:
+                f.write(audio_bytes)
+            
             # Initialize recognizer
             recognizer = sr.Recognizer()
             
             # Load audio file
-            with sr.AudioFile(temp_audio.name) as source:
+            with sr.AudioFile(filepath) as source:
                 # Record the audio file
                 audio = recognizer.record(source)
                 
-                # Attempt to recognize speech using Google Speech Recognition
+                # Attempt to recognize speech
                 text = recognizer.recognize_google(audio)
                 return {"success": True, "text": text}
-
-    except sr.UnknownValueError:
-        return {"success": False, "error": "Could not understand the audio"}
-    except sr.RequestError as e:
-        return {"success": False, "error": f"Could not request results; {str(e)}"}
+                
+        except sr.UnknownValueError:
+            return {"success": False, "error": "Could not understand the audio"}
+        except sr.RequestError as e:
+            return {"success": False, "error": f"Could not request results; {str(e)}"}
+        except Exception as e:
+            return {"success": False, "error": f"Error processing audio: {str(e)}"}
+        finally:
+            # Clean up temp file
+            try:
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+            except Exception:
+                pass  # If cleanup fails, just continue
+    
     except Exception as e:
-        return {"success": False, "error": f"Error processing audio: {str(e)}"}
-
+        return {"success": False, "error": f"Setup error: {str(e)}"}
+    
 # Set page configuration
 st.set_page_config(
     page_title="English Speaking Evaluation",
@@ -106,27 +130,42 @@ if 'history' not in st.session_state:
 if 'current_test' not in st.session_state:
     st.session_state.current_test = None
 
-# Add a hardcoded API key for testing purposes
-# In production, use a more secure method
-GROQ_API_KEY = "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"  # Replace with your actual API key
+# Get API key from environment variable (no hardcoded keys)
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "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")
 MODEL_OPTION = "llama3-8b-8192"
 TEMPERATURE = 0.5
 
-# Check if we have a config file with API key
+# Try importing config file as a fallback
 try:
     import config
     if hasattr(config, "GROQ_API_KEY") and config.GROQ_API_KEY:
         GROQ_API_KEY = config.GROQ_API_KEY
 except ImportError:
-    # No config file, try environment variable
-    env_key = os.environ.get("GROQ_API_KEY")
-    if env_key:
-        GROQ_API_KEY = env_key
+    pass  # Continue with environment variable or empty key
+
+# Load reading texts from a JSON file if available
+def load_reading_texts():
+    try:
+        with open("reading_texts.json", "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        # Return default text if file not found or invalid
+        return {
+            "default": """The rapid advancement of artificial intelligence has brought significant changes 
+            to various industries. While some fear job displacement, others believe AI will create new 
+            opportunities and enhance human capabilities. Researchers continue to debate the long-term 
+            implications of these technologies on society, economy, and human cognition."""
+        }
 
 # Sidebar for minimal settings
 with st.sidebar:
-    st.image("https://via.placeholder.com/150x150.png?text=E-Speak", width=150)
-    st.title("E-Speak")
+    # Use a local image if available, otherwise use a placeholder
+    try:
+        st.image("assets/logo.png", width=90)
+    except:
+        st.image("https://via.placeholder.com/100x100.png?text=Speaking-Test", width=150)
+    
+    st.title("Speaking-Test")
     
     st.markdown("---")
     
@@ -140,13 +179,11 @@ with st.sidebar:
     else:
         st.info("No test history yet")
 
-# Removed the Groq client initialization with direct API calls below
-
 def evaluate_with_groq(text, evaluation_type="speaking", reference_text=None):
     """Get evaluation from Groq API using direct HTTP requests"""
     # Check if API key is properly configured
-    if not GROQ_API_KEY or GROQ_API_KEY == "YOUR_API_KEY_HERE":
-        return {"success": False, "error": "Groq API key is not configured properly"}
+    if not GROQ_API_KEY:
+        return {"success": False, "error": "Groq API key is not configured. Please set the GROQ_API_KEY environment variable."}
         
     try:
         # Set the system prompt based on evaluation type
@@ -221,19 +258,28 @@ def evaluate_with_groq(text, evaluation_type="speaking", reference_text=None):
         response = requests.post(
             "https://api.groq.com/openai/v1/chat/completions",
             json=payload,
-            headers=headers
+            headers=headers,
+            timeout=30  # Add timeout to prevent hanging
         )
         
         # Check if the request was successful
         if response.status_code == 200:
-            response_json = response.json()
-            result = json.loads(response_json["choices"][0]["message"]["content"])
-            return {"success": True, "evaluation": result}
+            try:
+                response_json = response.json()
+                result = json.loads(response_json["choices"][0]["message"]["content"])
+                return {"success": True, "evaluation": result}
+            except (json.JSONDecodeError, KeyError) as e:
+                return {"success": False, "error": f"Error parsing API response: {str(e)}"}
         else:
             # Return the specific error from the API
-            error_detail = response.json() if response.content else {"error": f"HTTP {response.status_code}"}
-            return {"success": False, "error": f"Error from Groq API: {error_detail}"}
+            try:
+                error_detail = response.json() if response.content else {"error": f"HTTP {response.status_code}"}
+                return {"success": False, "error": f"Error from Groq API: {error_detail}"}
+            except json.JSONDecodeError:
+                return {"success": False, "error": f"HTTP error {response.status_code}: {response.text[:100]}"}
     
+    except requests.exceptions.RequestException as e:
+        return {"success": False, "error": f"Network error: {str(e)}"}
     except Exception as e:
         return {"success": False, "error": f"Error processing request: {str(e)}"}
 
@@ -389,10 +435,9 @@ def reading_test():
     st.title("📚 Reading Test")
     st.markdown("</div>", unsafe_allow_html=True)
     
-    reading_text = """The rapid advancement of artificial intelligence has brought significant changes 
-            to various industries. While some fear job displacement, others believe AI will create new 
-            opportunities and enhance human capabilities. Researchers continue to debate the long-term 
-            implications of these technologies on society, economy, and human cognition."""
+    # Load reading texts from file
+    reading_texts = load_reading_texts()
+    reading_text = reading_texts.get("default")
     
     st.markdown('<div class="instruction-box">', unsafe_allow_html=True)
     st.write("**Instructions:** Read the following text aloud clearly and at a natural pace.")
@@ -458,25 +503,45 @@ def reading_test():
         </div>
         """, unsafe_allow_html=True)
 
+def check_api_connection():
+    """Check API connection without making a full API call"""
+    if not GROQ_API_KEY:
+        return False, "API key not configured"
+    
+    try:
+        # Make a lightweight GET request to check if the API is accessible
+        # Using the models endpoint which is commonly available
+        response = requests.get(
+            "https://api.groq.com/openai/v1/models",
+            headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
+            timeout=5
+        )
+        return response.status_code < 400, f"HTTP Status: {response.status_code}"
+    except requests.exceptions.RequestException as e:
+        return False, f"Connection error: {str(e)}"
+
 def main():
     """Main application"""
     # Header
     st.markdown("""
-    <div style="text-align: center; padding-bottom: 30px;">
-        <h1 style="color: #0366d6;">📣 English Speaking Evaluation Test 📣</h1>
+    <div style="text-align: center; padding-bottom: 0px;">
+        <h1 style="color: #0366d6;">English Speaking Evaluation Test</h1>
         <p>Improve your English speaking skills with AI-powered feedback</p>
     </div>
     """, unsafe_allow_html=True)
     
     # Check if API key is configured
-    if not GROQ_API_KEY or GROQ_API_KEY == "YOUR_API_KEY_HERE":
-        st.error("⚠️ API key not configured correctly!")
+    if not GROQ_API_KEY:
+        st.error("⚠️ API key not configured!")
         st.info("""
         ### How to set up the API key:
         
         For app administrators, please do ONE of the following:
-           
-        **Option 1:** Edit this file directly and replace `YOUR_API_KEY_HERE` with your actual Groq API key.
+        
+        **Option 1:** Create a `.env` file in the same directory with:
+        ```
+        GROQ_API_KEY=your_api_key_here
+        ```
         
         **Option 2:** Create a `config.py` file in the same directory with:
         ```python
@@ -491,12 +556,12 @@ def main():
         
         If you don't have a Groq API key, you can get one at [https://console.groq.com/](https://console.groq.com/)
         """)
-        st.stop()
+        st.stop()  # Stop execution if API key is not configured
     
     # Test the API connection before proceeding
-    test_connection = evaluate_with_groq("Hello, this is a test.", "speaking")
-    if not test_connection["success"]:
-        st.error(f"⚠️ API connection failed: {test_connection['error']}")
+    connection_ok, connection_message = check_api_connection()
+    if not connection_ok:
+        st.error(f"⚠️ API connection failed: {connection_message}")
         st.info("""
         ### API Connection Failed
         
@@ -507,7 +572,7 @@ def main():
         
         Please verify your API key and try again.
         """)
-        st.stop()
+        st.stop()  # Stop execution if API connection fails
     
     # Continue with normal app flow if API connection is successful
     # Tabs for different tests
